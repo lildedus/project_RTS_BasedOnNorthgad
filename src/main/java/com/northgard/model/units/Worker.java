@@ -12,10 +12,10 @@ public class Worker extends Unit {
         //Зависимость рес-ов от типа клетки
         switch (tile.getType()){
             case PLAIN:
-                game.addFood(5);
+                game.addFood(4);
                 break;
             case FOREST:
-                game.addWood(3);
+                game.addWood(2);
                 break;
             case MOUNTAIN:
                 break;//не дает рес-ов

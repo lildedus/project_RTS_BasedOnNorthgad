@@ -3,6 +3,7 @@ package com.northgard.model;
 import com.northgard.model.units.Unit;
 import com.northgard.model.units.Warrior;
 import com.northgard.model.units.Worker;
+import com.northgard.model.units.Enemy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,17 +13,19 @@ public class Game {
     private static final int TILE_SIZE = 60;
     //Карта и ресурсы
     private Tile[][] map;
-    private int food;
+    private double food;
     private int wood;
     //Юниты
-    private List<Unit> units;
+    private List<Unit> playerUnits;   //рабочие и воины
+    private List<Enemy> enemies;      //враги
     //Завершение игры
     private boolean gameOver;
     private boolean playerWon;
 
     public Game(){
         map = new Tile[MAP_SIZE][MAP_SIZE];
-        units = new ArrayList<>();
+        playerUnits = new ArrayList<>();
+        enemies = new ArrayList<>();
         food = 100;
         wood = 50;
         gameOver = false;
@@ -32,33 +35,73 @@ public class Game {
     }
 
                                             // Инициализация игры
-    private void initMap(){
-        //Заполнение карты клетками разных типов
+private void initMap() {
+    for (int row = 0; row < MAP_SIZE; row++) {
+        for (int col = 0; col < MAP_SIZE; col++) {
+            if (row == 2 && col == 2) {
+                map[row][col] = new Tile(Tile.TileType.MOUNTAIN);
+            } else if ((row + col) % 3 == 0) {
+                map[row][col] = new Tile(Tile.TileType.FOREST);
+            } else {
+                map[row][col] = new Tile(Tile.TileType.PLAIN);
+            }
+        }
+    }
+    map[0][0].setOwned(true);
+
+    // Добавляем врагов на все клетки, кроме стартовой, центральной и соседних со стартовой
+    addEnemies();
+}
+
+    private void addEnemies() {
         for (int row = 0; row < MAP_SIZE; row++) {
             for (int col = 0; col < MAP_SIZE; col++) {
-                if (row == 2 && col == 2){
-                    // Центральная клетка - гора
-                    map[row][col] = new Tile(Tile.TileType.MOUNTAIN);
-                } else if ((row + col % 3 == 0)){
-                    // Каждая третья - лес
-                    map[row][col] = new Tile(Tile.TileType.FOREST);
-                } else {
-                    // Остальные - равнины
-                    map[row][col] = new Tile(Tile.TileType.PLAIN);
+                // Пропускаем стартовую клетку
+                if (row == 0 && col == 0) continue;
+
+                // Пропускаем соседние клетки от стартовой
+                if (isAdjacentToStart(row, col)) continue;
+
+                // Центральная клетка (2,2) — ДРАКОН
+                if (row == 2 && col == 2) {
+                    Enemy dragon = new Enemy("DRAGON");
+                    enemies.add(dragon);
+                    map[row][col].setUnit(dragon);
+                    continue;
+                }
+
+                Tile tile = map[row][col];
+                if (tile.getUnit() == null) {
+                    if (tile.getType() == Tile.TileType.PLAIN) {
+                        Enemy wolf = new Enemy("WOLF");
+                        enemies.add(wolf);
+                        tile.setUnit(wolf);
+                    } else if (tile.getType() == Tile.TileType.FOREST) {
+                        Enemy bear = new Enemy("BEAR");
+                        enemies.add(bear);
+                        tile.setUnit(bear);
+                    }
                 }
             }
-            
         }
-        map[0][0].setOwned(true); // Стартовая клетка игрока
     }
+
+    // Проверяет, является ли клетка соседней со стартовой (0,0)
+    private boolean isAdjacentToStart(int row, int col) {
+        // Соседние клетки: (0,1), (1,0), (1,1)
+        return (row == 0 && col == 1) ||
+                (row == 1 && col == 0) ||
+                (row == 1 && col == 1);
+    }
+
     private void initStartingUnits(){
         // Создание рабочих юнитов
         Worker worker1 = new Worker();
         //Добавление в список
-        units.add(worker1);
+        playerUnits.add(worker1);
         map[0][0].setUnit(worker1);
     }
-    public int getFood() {
+    public double getFood() {
         return food;
     }
     public int getWood() {
@@ -71,8 +114,12 @@ public class Game {
         return playerWon;
     }
 
-    public List<Unit> getUnits() {
-        return units;
+    public List<Unit> getPlayerUnits() {
+        return playerUnits;
+    }
+
+    public List<Enemy> getEnemies(){
+        return enemies;
     }
 
     public Tile getTile(int row, int col) {
@@ -81,13 +128,13 @@ public class Game {
 
                                     //Методы добычи
 
-    private void addFood(int amount){
+    public void addFood(double amount){
         this.food += amount;
-        System.out.println("Добавлено" + amount + " еды. Всего: " + food);
+        //System.out.println("Added " + amount + " food. Total: " + food);
     }
-    private void addWood(int amount){
+    public void addWood(int amount){
         this.wood += amount;
-        System.out.println("Добавлено" + amount + " древесины. Всего: " + wood);
+        //System.out.println("Added " + amount + " wood. Total: " + wood);
     }
                 //Хватает ли ресурсов для их траты и вычитание от общего кол-ва
     public boolean spendResources(int foodCost, int woodCost){
@@ -105,6 +152,13 @@ public class Game {
         if (map[row][col].isOwned()){
             return false;
         }
+
+        // Нельзя захватить клетку с врагом
+        if (map[row][col].getUnit() instanceof Enemy){
+            System.out.println("Cannot capture tile with enemy! Defeat the enemy first!");
+            return false;
+        }
+
         //Проверка соседних клеток
         int [][] directions = {{-1,0},{1,0},{0,-1},{0,1}};
         for (int[] dir : directions) {
@@ -122,14 +176,14 @@ public class Game {
     //Ошибки при захвате
     public boolean captureTile(int row, int col){
         if (!canCaptureTile(row,col)){
-            System.out.println("Нельзя захватить эту клетку!");
+            System.out.println("Cannot capture this tile!");
         }
         if (spendResources(50, 30)){
             map[row][col].setOwned(true);
-            System.out.println("Клетка (" + row + ", " + col + ") захвачена!");
+            System.out.println("Tile (" + row + ", " + col + ") captured!");
             return true;
         } else {
-            System.out.println("Не хватает ресурсов для захвата!");
+            System.out.println("Not enough resources to capture!");
             return false;
         }
     }
@@ -138,22 +192,22 @@ public class Game {
     public boolean hireWorker(int row, int col) {
         //Захвачена и свободна ли клетка
         if (!map[row][col].isOwned()) {
-            System.out.println("Клетка не захвачена!");
+            System.out.println("Tile is not owned!");
             return false;
         }
         if (map[row][col].getUnit() != null) {
-            System.out.println("На клетке уже есть юнит!");
+            System.out.println("Tile already has a unit!");
             return false;
         }
         //Проверка на достаточное кол-во ресурсов
         if (spendResources(20, 10)) {
             Worker worker = new Worker();
-            units.add(worker);
+            playerUnits.add(worker);
             map[row][col].setUnit(worker);
-            System.out.println("Рабочий нанят на клетку (" + row + ", " + col + ")");
+            System.out.println("Worker hired on tile (" + row + ", " + col + ")");
             return true;
         } else {
-            System.out.println("Не хватает ресурсов для найма рабочего!");
+            System.out.println("Not enough resources to hire a worker!");
             return false;
         }
     }
@@ -161,22 +215,22 @@ public class Game {
     public boolean hireWarrior(int row, int col) {
         //Захвачена и свободна ли клетка
         if (!map[row][col].isOwned()) {
-            System.out.println("Клетка не захвачена!");
+            System.out.println("Tile is not owned!");
             return false;
         }
         if (map[row][col].getUnit() != null) {
-            System.out.println("На клетке уже есть юнит!");
+            System.out.println("Tile already has a unit!");
             return false;
         }
         //Проверка на достаточное кол-во ресурсов
         if (spendResources(50, 20)) {
             Warrior warrior = new Warrior();
-            units.add(warrior);
+            playerUnits.add(warrior);
             map[row][col].setUnit(warrior);
-            System.out.println("Рабочий нанят на клетку (" + row + ", " + col + ")");
+            System.out.println("Warrior hired on tile (" + row + ", " + col + ")");
             return true;
         } else {
-            System.out.println("Не хватает ресурсов для найма воина!");
+            System.out.println("Not enough resources to hire a warrior!");
             return false;
         }
     }
@@ -185,20 +239,20 @@ public class Game {
         if (gameOver) return;
 
         //Юниты выполняют действия
-        for (Unit unit : units){
+        for (Unit unit : playerUnits){
             Tile unitTile = findTileByUnit(unit);
             if (unitTile != null){
                 unit.action(this,unitTile);
             }
         }
-        //Потребление еды
-        int foodConsumption = units.size();
+        // Потребление еды: 1.5 на каждого юнита игрока
+        double foodConsumption = playerUnits.size() * 1.5;
         if (food >= foodConsumption){
             food -= foodConsumption;
         } else {
             //Голод
-            System.out.println("Нехватка еды, люди голодают!");
-            for (Unit unit : units){
+            System.out.println("Food shortage! Units are starving.");
+            for (Unit unit : playerUnits){
                 unit.takeDamage(10);
             }
         }
@@ -221,7 +275,7 @@ public class Game {
     }
     public void removeDeadUnits (){
         List<Unit> toRemove = new ArrayList<>();
-        for (Unit unit : units){
+        for (Unit unit : playerUnits){
             if (!unit.isAlive()){
                 //Удаляем юнита с найденной клетки
                 Tile tile = findTileByUnit(unit);
@@ -231,33 +285,90 @@ public class Game {
                 toRemove.add(unit);
             }
         }
-        units.removeAll(toRemove);
-        if (toRemove.size() > 0){
-            System.out.println("Удалено мёртвых юнитов - " + toRemove.size());
+        for (Unit unit : enemies){
+            if (!unit.isAlive()){
+                //Удаляем юнита с найденной клетки
+                Tile tile = findTileByUnit(unit);
+                if (tile != null){
+                    tile.setUnit(null);
+                }
+                toRemove.add(unit);
+            }
         }
+        playerUnits.removeAll(toRemove);
+        enemies.removeAll(toRemove);
+        if (toRemove.size() > 0){
+            System.out.println("Removed dead units: " + toRemove.size());
+        }
+    }
+
+    // Атака врага на соседней клетке
+    public boolean attackNeighbor(int attackerRow, int attackerCol, int targetRow, int targetCol) {
+        // Проверяем, что клетки соседние (по горизонтали или вертикали)
+        boolean isAdjacent = (Math.abs(attackerRow - targetRow) + Math.abs(attackerCol - targetCol)) == 1;
+        if (!isAdjacent) {
+            System.out.println("Target is not adjacent!");
+            return false;
+        }
+
+        // Проверяем, что на клетке атакующего есть воин
+        Unit attacker = map[attackerRow][attackerCol].getUnit();
+        if (!(attacker instanceof Warrior)) {
+            System.out.println("No warrior on attacking tile!");
+            return false;
+        }
+
+        // Проверяем, что на целевой клетке есть враг
+        Unit target = map[targetRow][targetCol].getUnit();
+        if (!(target instanceof Enemy)) {
+            System.out.println("Target is not an enemy!");
+            return false;
+        }
+
+        // Атака
+        target.takeDamage(attacker.getAttack());
+        System.out.println("Warrior attacks " + ((Enemy) target).getDisplayName() + "!");
+        System.out.println("Enemy HP left: " + target.getHealth());
+        System.out.println("Warrior HP left: " + attacker.getHealth());
+
+        // КОНТРАТАКА ВРАГА (если враг ещё жив)
+        if (target.isAlive()) {
+            attacker.takeDamage(target.getAttack());
+            System.out.println(((Enemy) target).getDisplayName() + " counterattacks!");
+            System.out.println("Warrior HP left: " + attacker.getHealth());
+            System.out.println("Enemy HP left: " + target.getHealth());
+        }
+
+        // Если враг умер, удаляем его
+        if (!target.isAlive()) {
+            map[targetRow][targetCol].setUnit(null);
+            System.out.println(((Enemy) target).getDisplayName() + " defeated!");
+            return true;
+        }
+        return false;
     }
                                     //Проверка победы/поражения
     private void checkWinConditions(){
         //Захват центральной клетки
         Tile centerTile = map[2][2];
-        if (centerTile.isOwned()){
+        if (centerTile.isOwned() && centerTile.getUnit() == null){
             gameOver = true;
             playerWon = true;
-            System.out.println("ПОБЕДА! Центральная клетка захвачена!");
+            System.out.println("VICTORY! Dragon defeated and central tile captured!");
             return;
         }
         //Экономическая победа (500 еды и 500 древесины)
         if (food >= 500 && wood >= 500){
             gameOver = true;
             playerWon = true;
-            System.out.println("ПОБЕДА! Накоплено 500 единиц ресурсов двух типов!");
+            System.out.println("VICTORY! Accumulated 500 of each resource!");
         }
     }
     private void checkLossConditions(){
-        if (units.isEmpty()){
+        if (playerUnits.isEmpty()){
             gameOver = true;
             playerWon = false;
-            System.out.println("ПОРАЖЕНИЕ! Все юниты мертвы.");
+            System.out.println("GAME OVER! All units are dead.");
         }
     }
 }
